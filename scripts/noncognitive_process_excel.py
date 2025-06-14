@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime
 
 # エクセルファイルを読み込む
-input_file = 'data/noncognitive_2024_07_shinagaku.xlsx'
+input_file = 'data/noncognitive_2024_12_shinagaku.xlsx'
 master_file = 'data/data_master.xlsx'
 df = pd.read_excel(input_file)
 
@@ -160,6 +160,20 @@ if all_columns:
     # データ移行処理
     print('\nデータ移行処理を開始します...')
 
+    # student_listから氏名とparticipant_idの対応を作成
+    student_list = pd.read_excel(master_file, sheet_name='student_list')
+    name_to_id = dict(zip(student_list['氏名'], student_list['participant_id']))
+
+    # participant_idを追加
+    df_output['participant_id'] = df_output['氏名'].map(lambda x: name_to_id.get(x, 'undefined'))
+
+    # undefinedのparticipant_idを持つ氏名をログ出力
+    undefined_names = df_output[df_output['participant_id'] == 'undefined']['氏名'].tolist()
+    if undefined_names:
+        print('以下の氏名はparticipant_idがundefinedです:')
+        for name in undefined_names:
+            print(f'  - {name}')
+
     # 列名の対応関係を定義
     column_mapping = {
         '性別': 'gender',
@@ -186,13 +200,6 @@ if all_columns:
         '主観的幸福感': 'swbs_total'
     }
 
-    # student_listから氏名とparticipant_idの対応表を作成
-    student_list_df = pd.read_excel(master_file, sheet_name='student_list')
-    name_to_id = dict(zip(student_list_df['氏名'], student_list_df['participant_id']))
-
-    # participant_idの追加
-    df_output['participant_id'] = df_output['氏名'].map(lambda x: name_to_id.get(x, 'undefined'))
-
     # 列名の変換
     renamed_df = df_output.rename(columns=column_mapping)
 
@@ -200,14 +207,26 @@ if all_columns:
     target_columns = ['participant_id'] + list(column_mapping.values())
     renamed_df = renamed_df[target_columns]
 
-    # participant_idで昇順ソート
-    combined_df = None
+    # measurement_waveを設定
     with pd.ExcelWriter(master_file, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
         try:
             master_df = pd.read_excel(master_file, sheet_name='master')
+            # 既存のparticipant_idとmeasurement_waveを取得
+            existing_data = master_df[['participant_id', 'measurement_wave']].set_index('participant_id')
+            # measurement_waveを設定（既存のparticipant_idがなければ1、あれば既存の最大値+1）
+            renamed_df['measurement_wave'] = renamed_df['participant_id'].apply(
+                lambda x: 1 if x not in existing_data.index else existing_data.loc[x, 'measurement_wave'].max() + 1
+            )
             combined_df = pd.concat([master_df, renamed_df], ignore_index=True)
         except:
+            # masterシートが存在しない場合は、measurement_waveを1に設定
+            renamed_df['measurement_wave'] = 1
             combined_df = renamed_df
+
+        # cohortとschool_idを設定
+        combined_df['cohort'] = '2024_G1'
+        combined_df['school_id'] = 1
+
         # participant_idで昇順ソート（undefinedは最後に）
         combined_df['participant_id_sort'] = combined_df['participant_id'].apply(lambda x: str(x) if x != 'undefined' else 'zzzzzzzz')
         combined_df = combined_df.sort_values('participant_id_sort').drop('participant_id_sort', axis=1)
