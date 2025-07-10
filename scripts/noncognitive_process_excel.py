@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime
 
 # エクセルファイルを読み込む
-input_file = 'data/noncognitive_2024_12_shinagaku.xlsx'
+input_file = 'data/noncognitive_2025_05_shinagaku.xlsx'
 master_file = 'data/data_master.xlsx'
 df = pd.read_excel(input_file)
 
@@ -165,6 +165,7 @@ if all_columns:
     name_to_id = dict(zip(student_list['氏名'], student_list['participant_id']))
 
     # participant_idを追加
+    df_output = df_output.copy()
     df_output['participant_id'] = df_output['氏名'].map(lambda x: name_to_id.get(x, 'undefined'))
 
     # undefinedのparticipant_idを持つ氏名をログ出力
@@ -224,7 +225,19 @@ if all_columns:
             combined_df = renamed_df
 
         # cohortとschool_idを設定
-        combined_df['cohort'] = '2024_G1'
+        # 学年に基づいてcohortを設定
+        def determine_cohort(grade):
+            if pd.isna(grade):
+                return '2024_G1'  # デフォルト値
+            grade_str = str(grade).strip()
+            if '1年生' in grade_str or '1' in grade_str:
+                return '2025_G1'
+            elif '2年生' in grade_str or '2' in grade_str:
+                return '2024_G1'
+            else:
+                return '2024_G1'  # デフォルト値
+        
+        combined_df['cohort'] = combined_df['grade_at_measurement'].apply(determine_cohort)
         combined_df['school_id'] = 1
 
         # participant_idで昇順ソート（undefinedは最後に）
