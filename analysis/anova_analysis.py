@@ -33,7 +33,7 @@ def load_preprocessed_data():
     
     # 前回の処理結果を読み込み（data_overview.pyから）
     from data_overview import main as preprocess_main
-    df_imputed, cognitive_vars, non_cognitive_vars, all_vars = preprocess_main()
+    df_imputed, cognitive_vars, non_cognitive_vars, all_vars, assumptions_df = preprocess_main()
     
     print(f"読み込み完了: {df_imputed.shape}")
     return df_imputed, cognitive_vars, non_cognitive_vars, all_vars

@@ -3,10 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
-from scipy.stats import f_oneway
+from scipy.stats import f_oneway, shapiro, levene, bartlett
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
+from statsmodels.stats.diagnostic import het_white
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -263,6 +264,340 @@ def verify_imputation_results(df_original, df_imputed, all_vars):
             print(f"  欠損数: {missing_count}/{total_count}")
             print(f"  補完実行数: {imputed_count}")
             print(f"  補完率: {imputed_count/total_count*100:.1f}%" if total_count > 0 else "  補完率: N/A")
+
+def check_anova_assumptions(df_imputed, all_vars):
+    """分散分析の前提条件チェック"""
+    print("\n=== 分散分析の前提条件チェック ===")
+    
+    # 出力ディレクトリの作成
+    import os
+    output_dir = './analysis_result/anova_assumptions'
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # 前提条件チェック結果を保存するリスト
+    assumption_results = []
+    
+    # 各変数について前提条件をチェック
+    for var in all_vars:
+        if var in df_imputed.columns and not df_imputed[var].isnull().all():
+            print(f"\n--- {var} の前提条件チェック ---")
+            
+            # 1. 独立性の確認（データ構造による）
+            independence_check = check_independence(df_imputed, var)
+            
+            # 2. 等分散性の確認
+            homoscedasticity_results = check_homoscedasticity(df_imputed, var)
+            
+            # 3. 正規性の確認
+            normality_results = check_normality(df_imputed, var)
+            
+            # 4. 線形性の確認（反復測定ANOVAの場合）
+            linearity_results = check_linearity(df_imputed, var)
+            
+            # 5. 残差分析
+            residual_analysis(df_imputed, var, output_dir)
+            
+            # 6. 正規性の視覚的確認
+            create_normality_plots(df_imputed, var, output_dir)
+            
+            # 結果をまとめる
+            assumption_results.append({
+                'variable': var,
+                'independence': independence_check,
+                'homoscedasticity_levene_p': homoscedasticity_results['levene_p'],
+                'homoscedasticity_bartlett_p': homoscedasticity_results['bartlett_p'],
+                'normality_shapiro_p': normality_results['shapiro_p'],
+                'normality_kstest_p': normality_results['kstest_p'],
+                'linearity_correlation': linearity_results['correlation'],
+                'linearity_p': linearity_results['p_value']
+            })
+    
+    # 結果をDataFrameに変換
+    assumptions_df = pd.DataFrame(assumption_results)
+    
+    # 結果の保存
+    save_assumption_results(assumptions_df, output_dir)
+    
+    print(f"\n✅ 前提条件チェック完了: {output_dir}に保存")
+    
+    return assumptions_df
+
+def check_independence(df, var):
+    """独立性の確認"""
+    # データ構造の確認
+    n_participants = df['participant_id'].nunique()
+    n_observations = len(df)
+    n_waves = df['measurement_wave'].nunique()
+    
+    # 反復測定設計かどうかの確認
+    expected_obs = n_participants * n_waves
+    is_repeated_measures = abs(n_observations - expected_obs) < (expected_obs * 0.1)  # 10%の誤差許容
+    
+    independence_status = "要注意: 反復測定設計" if is_repeated_measures else "OK: 独立観測"
+    
+    print(f"  独立性: {independence_status}")
+    print(f"    参加者数: {n_participants}, 観測数: {n_observations}, 測定回数: {n_waves}")
+    
+    return independence_status
+
+def check_homoscedasticity(df, var):
+    """等分散性の確認"""
+    # コース×Wave別のグループに分けてデータを準備
+    groups = []
+    group_names = []
+    
+    for course in ['eSports', 'Liberal Arts']:
+        for wave in [1, 2, 3]:
+            condition = (df['course_group'] == course) & (df['measurement_wave'] == wave)
+            group_data = df[condition][var].dropna()
+            
+            if len(group_data) > 0:
+                groups.append(group_data)
+                group_names.append(f"{course}_wave{wave}")
+    
+    # Levene検定（等分散性の検定）
+    if len(groups) >= 2:
+        levene_stat, levene_p = levene(*groups)
+        
+        # Bartlett検定（正規分布を仮定した等分散性の検定）
+        bartlett_stat, bartlett_p = bartlett(*groups)
+        
+        print(f"  等分散性:")
+        print(f"    Levene検定: F={levene_stat:.4f}, p={levene_p:.4f}")
+        print(f"    Bartlett検定: χ²={bartlett_stat:.4f}, p={bartlett_p:.4f}")
+        
+        # 判定
+        levene_result = "OK" if levene_p > 0.05 else "要注意"
+        bartlett_result = "OK" if bartlett_p > 0.05 else "要注意"
+        
+        print(f"    判定: Levene={levene_result}, Bartlett={bartlett_result}")
+        
+        return {
+            'levene_stat': levene_stat,
+            'levene_p': levene_p,
+            'bartlett_stat': bartlett_stat,
+            'bartlett_p': bartlett_p,
+            'levene_result': levene_result,
+            'bartlett_result': bartlett_result
+        }
+    else:
+        print(f"  等分散性: グループ数不足")
+        return {
+            'levene_stat': np.nan,
+            'levene_p': np.nan,
+            'bartlett_stat': np.nan,
+            'bartlett_p': np.nan,
+            'levene_result': 'データ不足',
+            'bartlett_result': 'データ不足'
+        }
+
+def check_normality(df, var):
+    """正規性の確認"""
+    # 全データの正規性検定
+    data = df[var].dropna()
+    
+    if len(data) > 3:
+        # Shapiro-Wilk検定
+        shapiro_stat, shapiro_p = shapiro(data)
+        
+        # Kolmogorov-Smirnov検定
+        kstest_stat, kstest_p = stats.kstest(data, 'norm', args=(data.mean(), data.std()))
+        
+        print(f"  正規性:")
+        print(f"    Shapiro-Wilk検定: W={shapiro_stat:.4f}, p={shapiro_p:.4f}")
+        print(f"    Kolmogorov-Smirnov検定: D={kstest_stat:.4f}, p={kstest_p:.4f}")
+        
+        # 判定
+        shapiro_result = "OK" if shapiro_p > 0.05 else "要注意"
+        kstest_result = "OK" if kstest_p > 0.05 else "要注意"
+        
+        print(f"    判定: Shapiro={shapiro_result}, KS={kstest_result}")
+        
+        return {
+            'shapiro_stat': shapiro_stat,
+            'shapiro_p': shapiro_p,
+            'kstest_stat': kstest_stat,
+            'kstest_p': kstest_p,
+            'shapiro_result': shapiro_result,
+            'kstest_result': kstest_result
+        }
+    else:
+        print(f"  正規性: データ数不足")
+        return {
+            'shapiro_stat': np.nan,
+            'shapiro_p': np.nan,
+            'kstest_stat': np.nan,
+            'kstest_p': np.nan,
+            'shapiro_result': 'データ不足',
+            'kstest_result': 'データ不足'
+        }
+
+def check_linearity(df, var):
+    """線形性の確認（測定回数との関係）"""
+    # 測定回数と変数の相関
+    correlation, p_value = stats.pearsonr(df['measurement_wave'], df[var].fillna(df[var].mean()))
+    
+    print(f"  線形性:")
+    print(f"    測定回数との相関: r={correlation:.4f}, p={p_value:.4f}")
+    
+    return {
+        'correlation': correlation,
+        'p_value': p_value
+    }
+
+def residual_analysis(df, var, output_dir):
+    """残差分析"""
+    # 二元配置分散分析のモデル作成
+    try:
+        # 欠損値を除去
+        df_clean = df[['participant_id', 'course_group', 'measurement_wave', var]].dropna()
+        
+        if len(df_clean) > 10:  # 十分なデータがある場合のみ
+            # 統計モデルの作成
+            formula = f"{var} ~ C(course_group) + C(measurement_wave) + C(course_group):C(measurement_wave)"
+            model = ols(formula, data=df_clean).fit()
+            
+            # 残差の取得
+            residuals = model.resid
+            fitted_values = model.fittedvalues
+            
+            # 残差プロット
+            fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+            
+            # 1. 残差 vs 予測値
+            axes[0, 0].scatter(fitted_values, residuals, alpha=0.6)
+            axes[0, 0].axhline(y=0, color='red', linestyle='--')
+            axes[0, 0].set_xlabel('Fitted Values')
+            axes[0, 0].set_ylabel('Residuals')
+            axes[0, 0].set_title('Residuals vs Fitted Values')
+            axes[0, 0].grid(True, alpha=0.3)
+            
+            # 2. 残差の正規Q-Qプロット
+            stats.probplot(residuals, dist="norm", plot=axes[0, 1])
+            axes[0, 1].set_title('Normal Q-Q Plot of Residuals')
+            axes[0, 1].grid(True, alpha=0.3)
+            
+            # 3. 残差のヒストグラム
+            axes[1, 0].hist(residuals, bins=15, alpha=0.7, edgecolor='black')
+            axes[1, 0].set_xlabel('Residuals')
+            axes[1, 0].set_ylabel('Frequency')
+            axes[1, 0].set_title('Histogram of Residuals')
+            axes[1, 0].grid(True, alpha=0.3)
+            
+            # 4. 標準化残差 vs 予測値
+            standardized_residuals = residuals / residuals.std()
+            axes[1, 1].scatter(fitted_values, standardized_residuals, alpha=0.6)
+            axes[1, 1].axhline(y=0, color='red', linestyle='--')
+            axes[1, 1].axhline(y=2, color='orange', linestyle='--', alpha=0.7)
+            axes[1, 1].axhline(y=-2, color='orange', linestyle='--', alpha=0.7)
+            axes[1, 1].set_xlabel('Fitted Values')
+            axes[1, 1].set_ylabel('Standardized Residuals')
+            axes[1, 1].set_title('Standardized Residuals vs Fitted Values')
+            axes[1, 1].grid(True, alpha=0.3)
+            
+            plt.suptitle(f'Residual Analysis: {var}', fontsize=14, fontweight='bold')
+            plt.tight_layout()
+            plt.savefig(f'{output_dir}/residual_analysis_{var}.png', dpi=300, bbox_inches='tight')
+            plt.close()
+            
+    except Exception as e:
+        print(f"  残差分析エラー: {e}")
+
+def create_normality_plots(df, var, output_dir):
+    """正規性の視覚的確認"""
+    try:
+        data = df[var].dropna()
+        
+        if len(data) > 3:
+            fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+            
+            # 1. ヒストグラム + 正規分布曲線
+            axes[0, 0].hist(data, bins=15, alpha=0.7, density=True, edgecolor='black')
+            
+            # 正規分布曲線の追加
+            x = np.linspace(data.min(), data.max(), 100)
+            normal_curve = stats.norm.pdf(x, data.mean(), data.std())
+            axes[0, 0].plot(x, normal_curve, 'r-', linewidth=2, label='Normal Distribution')
+            
+            axes[0, 0].set_xlabel('Value')
+            axes[0, 0].set_ylabel('Density')
+            axes[0, 0].set_title('Histogram with Normal Curve')
+            axes[0, 0].legend()
+            axes[0, 0].grid(True, alpha=0.3)
+            
+            # 2. Q-Qプロット
+            stats.probplot(data, dist="norm", plot=axes[0, 1])
+            axes[0, 1].set_title('Q-Q Plot')
+            axes[0, 1].grid(True, alpha=0.3)
+            
+            # 3. 箱ひげ図
+            axes[1, 0].boxplot(data, vert=True)
+            axes[1, 0].set_ylabel('Value')
+            axes[1, 0].set_title('Box Plot')
+            axes[1, 0].grid(True, alpha=0.3)
+            
+            # 4. コース×Wave別の分布
+            courses = ['eSports', 'Liberal Arts']
+            waves = [1, 2, 3]
+            
+            for i, course in enumerate(courses):
+                for j, wave in enumerate(waves):
+                    condition = (df['course_group'] == course) & (df['measurement_wave'] == wave)
+                    group_data = df[condition][var].dropna()
+                    
+                    if len(group_data) > 0:
+                        axes[1, 1].hist(group_data, alpha=0.5, label=f'{course}_Wave{wave}', bins=10)
+            
+            axes[1, 1].set_xlabel('Value')
+            axes[1, 1].set_ylabel('Frequency')
+            axes[1, 1].set_title('Distribution by Course and Wave')
+            axes[1, 1].legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            axes[1, 1].grid(True, alpha=0.3)
+            
+            plt.suptitle(f'Normality Check: {var}', fontsize=14, fontweight='bold')
+            plt.tight_layout()
+            plt.savefig(f'{output_dir}/normality_check_{var}.png', dpi=300, bbox_inches='tight')
+            plt.close()
+            
+    except Exception as e:
+        print(f"  正規性プロット作成エラー: {e}")
+
+def save_assumption_results(assumptions_df, output_dir):
+    """前提条件チェック結果の保存"""
+    # Excel形式で保存
+    excel_path = f'{output_dir}/anova_assumptions_results.xlsx'
+    
+    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+        # 全結果
+        assumptions_df.to_excel(writer, sheet_name='前提条件チェック結果', index=False)
+        
+        # 問題のある変数を抽出
+        problematic_vars = assumptions_df[
+            (assumptions_df['homoscedasticity_levene_p'] < 0.05) |
+            (assumptions_df['normality_shapiro_p'] < 0.05)
+        ].copy()
+        
+        if len(problematic_vars) > 0:
+            problematic_vars.to_excel(writer, sheet_name='要注意変数', index=False)
+        
+        # 要約統計
+        summary_stats = pd.DataFrame({
+            'Check': ['Homoscedasticity (Levene)', 'Normality (Shapiro-Wilk)'],
+            'Variables_OK': [
+                sum(assumptions_df['homoscedasticity_levene_p'] >= 0.05),
+                sum(assumptions_df['normality_shapiro_p'] >= 0.05)
+            ],
+            'Variables_Problematic': [
+                sum(assumptions_df['homoscedasticity_levene_p'] < 0.05),
+                sum(assumptions_df['normality_shapiro_p'] < 0.05)
+            ],
+            'Total_Variables': [len(assumptions_df), len(assumptions_df)]
+        })
+        
+        summary_stats.to_excel(writer, sheet_name='要約統計', index=False)
+    
+    print(f"📊 前提条件チェック結果保存: {excel_path}")
 
 def create_visualizations(df_imputed, cognitive_vars, non_cognitive_vars):
     """データの可視化"""
@@ -542,6 +877,9 @@ def main():
     verify_imputation_results(df, df_imputed, all_vars)
     final_data_summary(df_imputed)
     
+    # 分散分析の前提条件チェック
+    assumptions_df = check_anova_assumptions(df_imputed, all_vars)
+    
     # 可視化
     create_visualizations(df_imputed, cognitive_vars, non_cognitive_vars)
     
@@ -549,6 +887,7 @@ def main():
     save_results(df_imputed, missing_df)
     
     print("\n✅ データ前処理完了")
+    print("✅ 分散分析の前提条件チェック完了")
     print("✅ 二元配置分散分析の準備完了")
     print("\n🎯 次のステップ: 二元配置分散分析の実行")
     print("- 要因A: コース（eSports vs Liberal Arts）")
@@ -556,7 +895,18 @@ def main():
     print("- 従属変数: 認知・非認知スキル各指標")
     print("- 注意: tmt_combined_trailtimeは秒単位で分析されます")
     
-    return df_imputed, cognitive_vars, non_cognitive_vars, all_vars
+    # 前提条件チェック結果のサマリー表示
+    print("\n📊 前提条件チェック結果サマリー:")
+    if len(assumptions_df) > 0:
+        levene_ok = sum(assumptions_df['homoscedasticity_levene_p'] >= 0.05)
+        shapiro_ok = sum(assumptions_df['normality_shapiro_p'] >= 0.05)
+        total_vars = len(assumptions_df)
+        
+        print(f"  等分散性（Levene検定）: {levene_ok}/{total_vars}変数がOK")
+        print(f"  正規性（Shapiro-Wilk検定）: {shapiro_ok}/{total_vars}変数がOK")
+        print("  詳細は './analysis_result/anova_assumptions/' フォルダを確認してください")
+    
+    return df_imputed, cognitive_vars, non_cognitive_vars, all_vars, assumptions_df
 
 if __name__ == "__main__":
-    df_imputed, cognitive_vars, non_cognitive_vars, all_vars = main()
+    df_imputed, cognitive_vars, non_cognitive_vars, all_vars, assumptions_df = main()
