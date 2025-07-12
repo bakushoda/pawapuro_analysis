@@ -205,7 +205,15 @@ def create_visualization(df_anova, all_vars, output_dir='./analysis_result/anova
                 
                 axes[i].set_title(f'{var}', fontsize=12)
                 axes[i].set_xlabel('Experiment Number')
-                axes[i].set_ylabel('Score')
+                
+                # 単位に応じてy軸ラベルを設定
+                if var == 'tmt_combined_trailtime':
+                    axes[i].set_ylabel('Time (seconds)')
+                elif var in ['fourchoice_mean_rt', 'stroop_mean_rt']:
+                    axes[i].set_ylabel('Reaction Time (ms)')
+                else:
+                    axes[i].set_ylabel('Score')
+                
                 axes[i].legend(title='Course')
             else:
                 axes[i].text(0.5, 0.5, f'{var}\n(データなし)', 
@@ -223,6 +231,7 @@ def create_visualization(df_anova, all_vars, output_dir='./analysis_result/anova
         
         print(f"📊 全変数可視化保存: {plot_path}")
         print(f"  作成したグラフ数: {len(plot_vars)}個")
+        print(f"  注意: tmt_combined_trailtimeは秒単位で表示されています")
     else:
         print("可視化対象の変数がありません")
 
@@ -263,7 +272,15 @@ def create_significant_visualization(df_anova, significant_vars, output_dir='./a
             
             axes[i].set_title(f'{var}', fontsize=12)
             axes[i].set_xlabel('Experiment Number')
-            axes[i].set_ylabel('Score')
+            
+            # 単位に応じてy軸ラベルを設定
+            if var == 'tmt_combined_trailtime':
+                axes[i].set_ylabel('Time (seconds)')
+            elif var in ['fourchoice_mean_rt', 'stroop_mean_rt']:
+                axes[i].set_ylabel('Reaction Time (ms)')
+            else:
+                axes[i].set_ylabel('Score')
+            
             axes[i].legend(title='Course')
         
         # 空のサブプロットを非表示
@@ -277,6 +294,8 @@ def create_significant_visualization(df_anova, significant_vars, output_dir='./a
         
         print(f"📊 有意な結果可視化保存: {plot_path}")
         print(f"  作成したグラフ数: {len(plot_vars)}個")
+        if 'tmt_combined_trailtime' in plot_vars:
+            print(f"  注意: tmt_combined_trailtimeは秒単位で表示されています")
     else:
         print("有意な結果の可視化対象がありません")
 
@@ -350,6 +369,11 @@ def main():
     # データの読み込み
     df_imputed, cognitive_vars, non_cognitive_vars, all_vars = load_preprocessed_data()
     
+    # 単位変換の確認
+    if 'tmt_combined_trailtime_converted' in df_imputed.columns:
+        print("✅ tmt_combined_trailtimeは秒単位に変換済みです")
+        print(f"   平均値: {df_imputed['tmt_combined_trailtime'].mean():.2f}秒")
+    
     # ANOVA用データの準備
     df_anova = prepare_anova_data(df_imputed, all_vars)
     
@@ -401,6 +425,7 @@ def main():
     print(f"📊 結果ファイル:")
     print(f"  - {excel_path}")
     print(f"  - {detailed_excel_path}")
+    print(f"📝 注意: tmt_combined_trailtimeは秒単位で分析・表示されています")
     
     return anova_results, summary_df, df_anova
 

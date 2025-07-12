@@ -315,6 +315,8 @@ def create_visualizations(df_imputed, cognitive_vars, non_cognitive_vars):
                               f'{output_dir}/all_variables_correlation.png')
     
     print(f"✅ 可視化完了: {output_dir}に保存")
+    if 'tmt_combined_trailtime_converted' in df_imputed.columns:
+        print("📝 注意: tmt_combined_trailtimeは秒単位で表示されています")
 
 def create_time_series_plot(df, variables, title, save_path):
     """時系列推移プロットの作成"""
@@ -345,7 +347,15 @@ def create_time_series_plot(df, variables, title, save_path):
             
             axes[i].set_title(var, fontweight='bold')
             axes[i].set_xlabel('Experiment Number')
-            axes[i].set_ylabel('Mean Value')
+            
+            # 単位に応じてy軸ラベルを設定
+            if var == 'tmt_combined_trailtime':
+                axes[i].set_ylabel('Time (seconds)')
+            elif var in ['fourchoice_mean_rt', 'stroop_mean_rt']:
+                axes[i].set_ylabel('Reaction Time (ms)')
+            else:
+                axes[i].set_ylabel('Mean Value')
+            
             axes[i].legend()
             axes[i].grid(True, alpha=0.3)
             axes[i].set_xticks([1, 2, 3])
@@ -422,6 +432,17 @@ def save_results(df_imputed, missing_df, output_dir='./analysis_result/data_over
         # 実験回数とコース分布も追加
         crosstab = pd.crosstab(df_imputed['measurement_wave'], df_imputed['course_group'], margins=True)
         crosstab.to_excel(writer, sheet_name='実験回数とコース分布')
+        
+        # 単位変換情報を追加
+        if 'tmt_combined_trailtime_converted' in df_imputed.columns:
+            unit_info = pd.DataFrame({
+                'Variable': ['tmt_combined_trailtime'],
+                'Original_Unit': ['milliseconds'],
+                'Converted_Unit': ['seconds'],
+                'Conversion_Factor': [1000],
+                'Note': ['Divided by 1000 to convert from ms to seconds']
+            })
+            unit_info.to_excel(writer, sheet_name='単位変換情報', index=False)
     
     print(f"📊 欠損値レポート保存: {excel_path}")
     
@@ -458,10 +479,42 @@ def save_results(df_imputed, missing_df, output_dir='./analysis_result/data_over
         
         eSports_stats.to_excel(writer, sheet_name='eSports Course Statistics')
         liberal_stats.to_excel(writer, sheet_name='Liberal Arts Course Statistics')
+        
+        # 単位情報を追加
+        if 'tmt_combined_trailtime_converted' in df_imputed.columns:
+            unit_summary = pd.DataFrame({
+                'Variable': ['tmt_combined_trailtime'],
+                'Unit': ['seconds'],
+                'Note': ['Converted from milliseconds (divided by 1000)']
+            })
+            unit_summary.to_excel(writer, sheet_name='単位情報', index=False)
     
     print(f"📈 基本統計保存: {summary_path}")
     
     return excel_data_path, excel_path, summary_path
+
+def convert_units(df):
+    """単位変換の実行"""
+    print("\n=== 単位変換 ===")
+    
+    # tmt_combined_trailtimeをミリ秒から秒に変換
+    if 'tmt_combined_trailtime' in df.columns:
+        # 元の値をバックアップ
+        df['tmt_combined_trailtime_ms'] = df['tmt_combined_trailtime'].copy()
+        
+        # ミリ秒から秒に変換（1000で割る）
+        df['tmt_combined_trailtime'] = df['tmt_combined_trailtime'] / 1000
+        
+        # 変換結果の確認
+        print("tmt_combined_trailtime 単位変換:")
+        print(f"  変換前（ミリ秒）: 平均{df['tmt_combined_trailtime_ms'].mean():.1f}ms")
+        print(f"  変換後（秒）: 平均{df['tmt_combined_trailtime'].mean():.2f}秒")
+        
+        # 変換フラグ列の作成
+        df['tmt_combined_trailtime_converted'] = True
+    
+    print("✅ 単位変換完了")
+    return df
 
 def main():
     """メイン実行関数"""
@@ -471,6 +524,9 @@ def main():
     df_raw = load_and_explore_data()
     df = extract_target_cohort(df_raw)
     df = create_course_classification(df)
+    
+    # 単位変換
+    df = convert_units(df)
     
     # 変数定義
     cognitive_vars, non_cognitive_vars, all_vars = define_variables()
@@ -498,6 +554,7 @@ def main():
     print("- 要因A: コース（eSports vs Liberal Arts）")
     print("- 要因B: 時間（実験回数 1, 2, 3）")
     print("- 従属変数: 認知・非認知スキル各指標")
+    print("- 注意: tmt_combined_trailtimeは秒単位で分析されます")
     
     return df_imputed, cognitive_vars, non_cognitive_vars, all_vars
 
