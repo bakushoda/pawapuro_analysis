@@ -161,8 +161,8 @@ class StroopDataIntegrator:
             for _, master_row in master_subset.iterrows():
                 date_diff = abs((master_row['measurement_date'] - test_date).days)
                 
-                # 15日以内かつ、現在の最適マッチより近い場合
-                if date_diff <= 15 and date_diff < min_date_diff:
+                # 60日以内かつ、現在の最適マッチより近い場合
+                if date_diff <= 60 and date_diff < min_date_diff:
                     min_date_diff = date_diff
                     best_match = master_row
             

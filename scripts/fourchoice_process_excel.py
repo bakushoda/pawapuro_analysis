@@ -161,8 +161,8 @@ class FourChoiceDataIntegrator:
             for _, master_row in master_subset.iterrows():
                 date_diff = abs((master_row['measurement_date'] - test_date).days)
                 
-                # 15日以内かつ、現在の最適マッチより近い場合
-                if date_diff <= 15 and date_diff < min_date_diff:
+                # 60日以内かつ、現在の最適マッチより近い場合
+                if date_diff <= 60 and date_diff < min_date_diff:
                     min_date_diff = date_diff
                     best_match = master_row
             
@@ -184,7 +184,7 @@ class FourChoiceDataIntegrator:
                 unmatched_fourchoice.append({
                     'name': name,
                     'test_date': test_date,
-                    'reason': f'No measurement within 15 days (participant_id: {participant_id})'
+                    'reason': f'No measurement within 60 days (participant_id: {participant_id})'
                 })
         
         self.matches_df = pd.DataFrame(matches)
