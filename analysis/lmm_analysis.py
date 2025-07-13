@@ -54,6 +54,10 @@ def load_preprocessed_data():
         df = df[df['cohort'] == '2024_G1'].copy()
         df.reset_index(drop=True, inplace=True)
         
+        # measurement_waveのセンタリング (1,2,3 -> 0,1,2)
+        print("🔄 measurement_waveをセンタリング (1,2,3 -> 0,1,2)")
+        df['measurement_wave'] = df['measurement_wave'] - 1
+        
         # コース分類
         df['course_group'] = df['course'].map({  # type: ignore
             'eスポーツエデュケーションコース': 'eSports',
@@ -307,7 +311,7 @@ def compare_models(df, variable):
     return model1, model2
 
 def interpret_lmm_results(result, variable):
-    """LMM結果の解釈（TMT単位考慮版）"""
+    """LMM結果の解釈（TMT単位考慮版・センタリング版）"""
     
     try:
         # 固定効果の抽出
@@ -351,10 +355,11 @@ def interpret_lmm_results(result, variable):
                         comparison = f"eSports is BETTER than Liberal Arts (+{abs(course_coef):.3f}{unit_info} for eSports)"
                 
                 print(f"🎯 Course Effect: {comparison} (p={course_p:.4f})")
+                print(f"   📊 解釈: Wave1(0)時点でのコース間の差")
             else:
                 print(f"🎯 Course Effect: No significant difference (p={course_p:.4f})")
         
-        # 時間効果
+        # 時間効果（センタリング後: 0=Wave1, 1=Wave2, 2=Wave3）
         if 'measurement_wave' in params:
             time_coef = params['measurement_wave']
             time_p = pvalues['measurement_wave']
@@ -374,6 +379,7 @@ def interpret_lmm_results(result, variable):
                         direction = f"DETERIORATION: decrease of {abs(time_coef):.3f}{unit_info} per wave"
                 
                 print(f"⏰ Time Effect: {direction} (p={time_p:.4f})")
+                print(f"   📊 解釈: Wave1(0)からWave3(2)まで、1回の測定ごとに{abs(time_coef):.3f}{unit_info}の変化")
             else:
                 print(f"⏰ Time Effect: No significant change (p={time_p:.4f})")
         
@@ -432,9 +438,9 @@ def visualize_individual_trajectories(df, variable, output_dir):
                                 name=f'{course} (Mean)',
                                 line=dict(width=4)))
     
-    # X軸を整数のみに設定
+    # X軸を整数のみに設定（センタリング後）
     fig.update_xaxes(
-        tickvals=[1, 2, 3],
+        tickvals=[0, 1, 2],
         ticktext=['1', '2', '3'],
         title='Experiment Number'
     )
@@ -735,8 +741,8 @@ def create_group_mean_plots(df, variables, graph_dir):
                            marker='o', linewidth=2, markersize=8,
                            label=course, capsize=5)
             
-            # X軸を整数のみに設定
-            plt.xticks([1, 2, 3])
+            # X軸を整数のみに設定（センタリング後）
+            plt.xticks([0, 1, 2], ['1', '2', '3'])
             plt.xlabel('Experiment Number', fontsize=12)
             
             # Y軸ラベルに単位情報を追加
@@ -776,7 +782,7 @@ def create_effect_size_plots(df, variables, graph_dir):
                 continue
             
             # Wave1とWave3でのコース間効果サイズ（Cohen's d）
-            for wave in [1, 3]:
+            for wave in [0, 2]:  # センタリング後: 0=Wave1, 2=Wave3
                 wave_data = analysis_data[analysis_data['measurement_wave'] == wave]
                 if len(wave_data) < 10:  # 最小サンプルサイズ
                     continue
@@ -801,7 +807,7 @@ def create_effect_size_plots(df, variables, graph_dir):
                     
                     effect_sizes.append({
                         'Variable': var,
-                        'Wave': f'Experiment {wave}',
+                        'Wave': f'Experiment {wave + 1}',  # センタリング後: 0→1, 2→3
                         'Cohens_d': cohens_d,
                         'Category': 'cognitive' if var in ['corsi_ncorrect_total', 'corsi_blockspan', 'corsi_totalscore',
                                                           'fourchoice_prop_correct', 'fourchoice_mean_rt',
@@ -886,8 +892,8 @@ def create_category_summary_plots(df, variables, graph_dir):
                 for participant in analysis_data['participant_id'].unique():
                     p_data = analysis_data[analysis_data['participant_id'] == participant]
                     
-                    wave1_data = p_data[p_data['measurement_wave'] == 1]
-                    wave3_data = p_data[p_data['measurement_wave'] == 3]
+                    wave1_data = p_data[p_data['measurement_wave'] == 0]  # センタリング後: 0=Wave1
+                    wave3_data = p_data[p_data['measurement_wave'] == 2]  # センタリング後: 2=Wave3
                     
                     if len(wave1_data) == 1 and len(wave3_data) == 1:
                         improvement = wave3_data[var].iloc[0] - wave1_data[var].iloc[0]
@@ -973,8 +979,8 @@ def create_correlation_heatmap(df, variables, output_dir):
     try:
         graph_dir = os.path.join(output_dir, "graphs")
         
-        # Wave1のデータで相関計算
-        wave1_data = df[df['measurement_wave'] == 1]
+        # Wave1のデータで相関計算（センタリング後）
+        wave1_data = df[df['measurement_wave'] == 0]  # センタリング後: 0=Wave1
         
         # 認知スキル相関
         cognitive_corr_data = wave1_data[variables['cognitive']].corr()
@@ -1015,7 +1021,7 @@ def create_final_summary_report(summary_df, detailed_results, variables, output_
     report_lines = []
     report_lines.append("="*80)
     report_lines.append("eスポーツコース効果：線形混合効果モデル（LMM）分析 最終レポート")
-    report_lines.append("TMT単位修正版（ミリ秒→秒）")
+    report_lines.append("TMT単位修正版（ミリ秒→秒）・センタリング版（Wave1基準）")
     report_lines.append("="*80)
     report_lines.append("")
     
@@ -1026,6 +1032,7 @@ def create_final_summary_report(summary_df, detailed_results, variables, output_
     report_lines.append(f"  - 認知スキル: {len(variables['cognitive'])}個")
     report_lines.append(f"  - 非認知スキル: {len(variables['non_cognitive'])}個")
     report_lines.append(f"  - TMT完了時間: 秒単位に修正済み")
+    report_lines.append(f"  - 時間変数: Wave1基準にセンタリング (0,1,2)")
     report_lines.append("")
     
     # 主要な発見
@@ -1141,9 +1148,9 @@ def create_final_summary_report(summary_df, detailed_results, variables, output_
     print('\n'.join(report_lines))
 
 def main():
-    """メイン実行関数（TMT単位修正版）"""
+    """メイン実行関数（TMT単位修正版・センタリング版）"""
     
-    print("🔧 線形混合効果モデル（LMM）分析開始 - 全25変数 (TMT単位修正版)")
+    print("🔧 線形混合効果モデル（LMM）分析開始 - 全25変数 (TMT単位修正版・センタリング版)")
     print("="*80)
     
     # 出力ディレクトリの作成
@@ -1221,10 +1228,11 @@ def main():
     print(f"      - effect_sizes_comparison.png (効果サイズ)")
     print(f"      - category_improvement_comparison.png (カテゴリ別改善)")
     print(f"      - *_correlation_heatmap.png (相関ヒートマップ)")
-    print(f"\n🔧 TMT修正内容:")
+    print(f"\n🔧 修正内容:")
     print(f"   - TMT完了時間: ミリ秒 → 秒単位に変換")
+    print(f"   - 時間変数: Wave1基準にセンタリング (1,2,3 → 0,1,2)")
     print(f"   - 効果サイズ計算: TMT時間は短い方が良いパフォーマンスとして調整")
-    print(f"   - 結果解釈: TMT時間の増減を適切に解釈（短い方が良い）")
+    print(f"   - 結果解釈: 切片はWave1時点の値、傾きは1回の測定ごとの変化量")
     print(f"   - 可視化: Y軸ラベルに単位情報を追加")
     
     return {
