@@ -755,7 +755,7 @@ def create_group_mean_plots(df, variables, graph_dir):
                 y_label += " (milliseconds)"
             
             plt.ylabel(y_label, fontsize=12)
-            plt.title(f'{var} - Group Mean Comparison (±SE)', fontsize=14, fontweight='bold')
+            plt.title(f'{var} - Group Mean Comparison', fontsize=14, fontweight='bold')
             plt.legend()
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
