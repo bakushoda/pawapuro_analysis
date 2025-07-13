@@ -700,8 +700,8 @@ def create_static_visualizations(df, variables, output_dir):
     graph_dir = os.path.join(output_dir, "graphs")
     os.makedirs(graph_dir, exist_ok=True)
     
-    # 1. 群平均比較グラフ（エラーバー付き）
-    create_group_mean_plots(df, variables['significant'], graph_dir)
+    # 1. 群平均比較グラフ（エラーバー付き）- 全変数対象
+    create_group_mean_plots(df, variables['all'], graph_dir)
     
     # 2. 効果サイズ可視化
     create_effect_size_plots(df, variables['all'], graph_dir)
@@ -716,12 +716,14 @@ def create_group_mean_plots(df, variables, graph_dir):
     群平均比較グラフ（エラーバー付き）TMT単位考慮版
     """
     
-    print("  群平均比較グラフを作成中...")
+    print(f"  群平均比較グラフを作成中... (全{len(variables)}変数)")
     
-    for var in variables:
+    created_count = 0
+    for i, var in enumerate(variables, 1):
         try:
             plot_data = df[['course_group', 'measurement_wave', var]].dropna()
             if len(plot_data) == 0:
+                print(f"    ⚠️ {i}/{len(variables)} {var}: データなし")
                 continue
                 
             # 群平均とSE計算
@@ -763,8 +765,13 @@ def create_group_mean_plots(df, variables, graph_dir):
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             plt.close()
             
+            created_count += 1
+            print(f"    ✅ {i}/{len(variables)} {var}: グラフ作成完了")
+            
         except Exception as e:
-            print(f"    ⚠️ {var}: エラー - {str(e)}")
+            print(f"    ⚠️ {i}/{len(variables)} {var}: エラー - {str(e)}")
+    
+    print(f"    📊 群平均比較グラフ作成完了: {created_count}/{len(variables)}変数")
 
 def create_effect_size_plots(df, variables, graph_dir):
     """
@@ -1190,7 +1197,7 @@ def main():
     print(f"\n📊 Phase 3: 可視化作成 (TMT単位考慮)")
     print("-" * 60)
     
-    # 最も強い効果のあった変数を可視化
+    # 最も強い効果のあった変数を可視化（インタラクティブ軌跡図）
     top_vars = summary_df.nsmallest(5, 'Course_P')['Variable'].tolist()
     top_vars.extend(summary_df.nsmallest(3, 'Time_P')['Variable'].tolist())
     top_vars = list(set(top_vars))  # 重複除去
@@ -1205,7 +1212,8 @@ def main():
             except Exception as e:
                 print(f"⚠️ {var}の軌跡図でエラー: {str(e)}")
     
-    # 静的グラフ作成
+    # 静的グラフ作成（全変数対象）
+    print(f"静的グラフ対象: 全{len(variables['all'])}変数")
     create_static_visualizations(df, variables, output_dir)
     
     # 相関ヒートマップ
