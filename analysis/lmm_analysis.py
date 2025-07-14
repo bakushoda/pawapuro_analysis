@@ -735,13 +735,20 @@ def create_group_mean_plots(df, variables, graph_dir):
             # matplotlib図の作成
             plt.figure(figsize=(10, 6))
             
+            # コースごとの色を指定
+            course_colors = {
+                'eSports': '#1C1C7C',         # 濃い紺色
+                'Liberal Arts': '#E69F00'    # 濃いオレンジ
+            }
+            
             for course in summary_stats['course_group'].unique():
                 course_data = summary_stats[summary_stats['course_group'] == course]
                 plt.errorbar(course_data['measurement_wave'], 
                            course_data['mean'],
                            yerr=course_data['se'],
                            marker='o', linewidth=2, markersize=8,
-                           label=course, capsize=5)
+                           label=course, capsize=5,
+                           color=course_colors.get(course, None))
             
             # X軸を整数のみに設定（センタリング後）
             plt.xticks([0, 1, 2], ['1', '2', '3'])
@@ -1188,7 +1195,7 @@ def main():
     summary_df = create_comprehensive_lmm_summary(df, variables, output_dir)
     
     # Phase 2: 有意な効果のあった変数の詳細分析
-    print(f"\n🔍 Phase 2: 有意な効果のあった変数の詳細分析")
+    print(f"\n�� Phase 2: 有意な効果のあった変数の詳細分析")
     print("-" * 60)
     
     detailed_results = run_detailed_analysis_for_significant_vars(df, summary_df)
