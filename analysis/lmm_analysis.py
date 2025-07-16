@@ -765,6 +765,18 @@ def create_group_mean_plots(df, variables, graph_dir):
             plt.title(f'{var} - Group Mean Comparison', fontsize=14, fontweight='bold')
             plt.legend()
             plt.grid(True, alpha=0.3)
+            
+            # bigfive変数の場合、Y軸の範囲を4-12に固定
+            if 'bigfive' in var.lower():
+                # データの範囲を取得（参考用）
+                y_min = plot_data[var].min()
+                y_max = plot_data[var].max()
+                
+                # Y軸を4-12の範囲に固定
+                plt.ylim(4, 12)
+                
+                print(f"    📏 {var}: Y軸範囲固定 - データ範囲: {y_min:.2f} ~ {y_max:.2f} → 表示範囲: 4.0 ~ 12.0")
+            
             plt.tight_layout()
             
             # PNG保存
