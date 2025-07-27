@@ -752,7 +752,7 @@ def create_group_mean_plots(df, variables, graph_dir):
             
             # X軸を整数のみに設定（センタリング後）
             plt.xticks([0, 1, 2], ['1', '2', '3'])
-            plt.xlabel('Experiment Number', fontsize=12)
+            plt.xlabel('Experiment Number', fontsize=14)
             
             # Y軸ラベルに単位情報を追加
             y_label = var
@@ -761,8 +761,26 @@ def create_group_mean_plots(df, variables, graph_dir):
             elif 'rt' in var.lower():
                 y_label += " (milliseconds)"
             
-            plt.ylabel(y_label, fontsize=12)
-            plt.title(f'{var} - Group Mean Comparison', fontsize=14, fontweight='bold')
+            plt.ylabel(y_label, fontsize=14)
+            
+            # bigfive変数の場合、日本語タイトルを使用
+            if 'bigfive' in var.lower():
+                if 'extraversion' in var.lower():
+                    title = 'Big Five: Extraversion - Group Mean Comparison'
+                elif 'agreeableness' in var.lower():
+                    title = 'Big Five: Agreeableness - Group Mean Comparison'
+                elif 'conscientiousness' in var.lower():
+                    title = 'Big Five: Conscientiousness - Group Mean Comparison'
+                elif 'neuroticism' in var.lower():
+                    title = 'Big Five: Neuroticism - Group Mean Comparison'
+                elif 'openness' in var.lower():
+                    title = 'Big Five: Openness - Group Mean Comparison'
+                else:
+                    title = f'{var} - Group Mean Comparison'
+            else:
+                title = f'{var} - Group Mean Comparison'
+            
+            plt.title(title, fontsize=18, fontweight='bold')
             plt.legend()
             plt.grid(True, alpha=0.3)
             
@@ -873,9 +891,9 @@ def create_effect_size_plots(df, variables, graph_dir):
                     parts2['bodies'][0].set_alpha(0.7)
                 
                 ax.set_xticks([1, 2])
-                ax.set_xticklabels(['Cognitive Skills', 'Non-Cognitive Skills'])
-                ax.set_ylabel("Cohen's d (eSports favoring)")
-                ax.set_title(f'{experiment} - Effect Size Distribution')
+                ax.set_xticklabels(['Cognitive Skills', 'Non-Cognitive Skills'], fontsize=12)
+                ax.set_ylabel("Cohen's d (eSports favoring)", fontsize=14)
+                ax.set_title(f'{experiment} - Effect Size Distribution', fontsize=16, fontweight='bold')
                 ax.grid(True, alpha=0.3)
                 ax.axhline(y=0, color='black', linestyle='--', alpha=0.5)
                 
@@ -981,9 +999,9 @@ def create_category_summary_plots(df, variables, graph_dir):
                     patch.set_facecolor(color)
                     patch.set_alpha(0.7)
                 
-                plt.xticks(positions, labels, rotation=0)
-                plt.ylabel('Improvement (Wave 3 - Wave 1, adjusted for direction)')
-                plt.title('Category and Course-Specific Improvement Comparison (TMT Fixed)', fontsize=14, fontweight='bold')
+                plt.xticks(positions, labels, rotation=0, fontsize=12)
+                plt.ylabel('Improvement (Wave 3 - Wave 1, adjusted for direction)', fontsize=14)
+                plt.title('Category and Course-Specific Improvement Comparison (TMT Fixed)', fontsize=18, fontweight='bold')
                 plt.grid(True, alpha=0.3)
                 plt.axhline(y=0, color='black', linestyle='--', alpha=0.5)
                 
@@ -1015,7 +1033,7 @@ def create_correlation_heatmap(df, variables, output_dir):
         mask = np.triu(np.ones_like(cognitive_corr_data, dtype=bool))
         sns.heatmap(cognitive_corr_data, mask=mask, annot=True, cmap='coolwarm', 
                    center=0, square=True, linewidths=0.5)
-        plt.title('Correlation Heatmap for Cognitive Skills (Wave 1, TMT in seconds)', fontsize=14, fontweight='bold')
+        plt.title('Correlation Heatmap for Cognitive Skills (Wave 1, TMT in seconds)', fontsize=18, fontweight='bold')
         plt.tight_layout()
         
         save_path = os.path.join(graph_dir, "cognitive_correlation_heatmap.png")
@@ -1029,7 +1047,7 @@ def create_correlation_heatmap(df, variables, output_dir):
         mask = np.triu(np.ones_like(non_cognitive_corr_data, dtype=bool))
         sns.heatmap(non_cognitive_corr_data, mask=mask, annot=True, cmap='coolwarm',
                    center=0, square=True, linewidths=0.5)
-        plt.title('Correlation Heatmap for Non-Cognitive Skills (Wave 1)', fontsize=14, fontweight='bold')
+        plt.title('Correlation Heatmap for Non-Cognitive Skills (Wave 1)', fontsize=18, fontweight='bold')
         plt.tight_layout()
         
         save_path = os.path.join(graph_dir, "non_cognitive_correlation_heatmap.png")
