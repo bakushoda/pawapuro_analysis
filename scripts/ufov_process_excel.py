@@ -13,7 +13,7 @@ class UFOVDataIntegrator:
         """
         self.data_dir = data_dir
         self.master_file = os.path.join(data_dir, "data_master.xlsx")
-        self.ufov_file = os.path.join(data_dir, "tiger_2024yobijikken_usefulfieldofviewtest(ja)_summary_2507120824.xlsx")
+        self.ufov_file = os.path.join(data_dir, "tiger_2024pawapuro_usefulfieldofviewtest(ja)_summary_2508211238.xlsx")
         
     def load_data(self):
         """
@@ -24,7 +24,6 @@ class UFOVDataIntegrator:
             print("Loading data_master.xlsx...")
             self.master_data = pd.read_excel(self.master_file, sheet_name="master")
             self.student_list = pd.read_excel(self.master_file, sheet_name="student_list")
-            self.school_list = pd.read_excel(self.master_file, sheet_name="school_list")
             
             # UFOVデータを読み込み
             print("Loading UFOV data...")
@@ -91,64 +90,64 @@ class UFOVDataIntegrator:
             print(f"\nParticipants with multiple test sessions: {len(multiple_sessions)}")
             print(f"Max sessions per participant: {multiple_sessions.max()}")
     
-    def create_name_mapping(self):
+    def validate_participant_ids(self):
         """
-        氏名からparticipant_idへのマッピングを作成
+        participant_idの妥当性をチェック
         """
-        print("Creating name to participant_id mapping...")
+        print("Validating participant IDs...")
         
-        # student_listから氏名とparticipant_idのマッピングを作成
-        self.name_to_pid = dict(zip(self.student_list['氏名'], self.student_list['participant_id']))
+        # student_listから有効なparticipant_idのセットを作成
+        valid_participant_ids = set(self.student_list['participant_id'].unique())
         
-        print(f"Created mapping for {len(self.name_to_pid)} students")
+        print(f"Valid participant IDs: {len(valid_participant_ids)}")
         
-        # ufov_dataの氏名がstudent_listに存在するかチェック
-        ufov_names = set(self.ufov_processed['subjectId'].unique())
-        master_names = set(self.student_list['氏名'].unique())
+        # ufov_dataのparticipant_idがstudent_listに存在するかチェック
+        ufov_pids = set(self.ufov_processed['subjectId'].unique())
         
-        matched_names = ufov_names & master_names
-        unmatched_names = ufov_names - master_names
+        matched_pids = ufov_pids & valid_participant_ids
+        unmatched_pids = ufov_pids - valid_participant_ids
         
-        print(f"Matched names: {len(matched_names)}")
-        print(f"Unmatched names: {len(unmatched_names)}")
+        print(f"Matched participant IDs: {len(matched_pids)}")
+        print(f"Unmatched participant IDs: {len(unmatched_pids)}")
         
-        if unmatched_names:
-            print(f"Unmatched names: {list(unmatched_names)}")
+        if unmatched_pids:
+            print(f"Unmatched participant IDs: {list(unmatched_pids)}")
     
-    def match_data_by_date_and_name(self):
+    def match_data_by_participant_id_and_date(self):
         """
-        氏名と測定日でデータをマッチング（複数回測定に対応）
+        participant_idと測定日でデータをマッチング（複数回測定に対応）
         """
-        print("Matching data by name and measurement date...")
+        print("Matching data by participant ID and measurement date...")
         
         # master_dataの日付形式を統一
         self.master_data['measurement_date'] = pd.to_datetime(self.master_data['measurement_date'])
+        
+        # student_listから有効なparticipant_idのセットを作成
+        valid_participant_ids = set(self.student_list['participant_id'].unique())
         
         # マッチング用のデータフレームを準備
         matches = []
         unmatched_ufov = []
         
         for _, ufov_row in self.ufov_processed.iterrows():
-            name = ufov_row['subjectId']
+            participant_id = ufov_row['subjectId']
             test_date = ufov_row['startDate']
             
-            # 氏名がstudent_listにあるかチェック
-            if name not in self.name_to_pid:
+            # participant_idがstudent_listにあるかチェック
+            if participant_id not in valid_participant_ids:
                 unmatched_ufov.append({
-                    'name': name,
+                    'participant_id': participant_id,
                     'test_date': test_date,
-                    'reason': 'Name not found in student_list'
+                    'reason': 'Participant ID not found in student_list'
                 })
                 continue
-            
-            participant_id = self.name_to_pid[name]
             
             # 同じparticipant_idのレコードを全て取得
             master_subset = self.master_data[self.master_data['participant_id'] == participant_id].copy()
             
             if len(master_subset) == 0:
                 unmatched_ufov.append({
-                    'name': name,
+                    'participant_id': participant_id,
                     'test_date': test_date,
                     'reason': 'Participant ID not found in master data'
                 })
@@ -170,7 +169,6 @@ class UFOVDataIntegrator:
                 match_info = {
                     'master_index': best_match.name,
                     'participant_id': participant_id,
-                    'name': name,
                     'measurement_wave': best_match['measurement_wave'],
                     'cohort': best_match['cohort'],
                     'master_date': best_match['measurement_date'],
@@ -183,7 +181,7 @@ class UFOVDataIntegrator:
                 matches.append(match_info)
             else:
                 unmatched_ufov.append({
-                    'name': name,
+                    'participant_id': participant_id,
                     'test_date': test_date,
                     'reason': f'No measurement within 15 days (participant_id: {participant_id})'
                 })
@@ -206,7 +204,7 @@ class UFOVDataIntegrator:
                 print(f"  Wave {wave}: {count} matches")
             
             print(f"\nSample matches:")
-            print(self.matches_df[['name', 'measurement_wave', 'master_date', 'ufov_date', 'date_diff']].head(10))
+            print(self.matches_df[['participant_id', 'measurement_wave', 'master_date', 'ufov_date', 'date_diff']].head(10))
         
         if len(self.unmatched_df) > 0:
             print(f"\nUnmatched records sample:")
@@ -267,14 +265,12 @@ class UFOVDataIntegrator:
         with pd.ExcelWriter(backup_file, engine='openpyxl') as writer:
             self.master_data.to_excel(writer, sheet_name='master', index=False)
             self.student_list.to_excel(writer, sheet_name='student_list', index=False)
-            self.school_list.to_excel(writer, sheet_name='school_list', index=False)
         
         # 更新されたデータを保存
         print(f"Saving updated data to {self.master_file}")
         with pd.ExcelWriter(self.master_file, engine='openpyxl') as writer:
             self.updated_master.to_excel(writer, sheet_name='master', index=False)
             self.student_list.to_excel(writer, sheet_name='student_list', index=False)
-            self.school_list.to_excel(writer, sheet_name='school_list', index=False)
         
         print("UFOV data integration completed successfully!")
     
@@ -306,14 +302,13 @@ class UFOVDataIntegrator:
         # 測定波別の詳細統計
         print(f"\nDetailed statistics by measurement wave:")
         wave_stats = self.matches_df.groupby('measurement_wave').agg({
-            'participant_id': 'nunique',
-            'name': 'count',
+            'participant_id': ['nunique', 'count'],
             'date_diff': ['mean', 'max']
         }).round(1)
         
         for wave in wave_stats.index:
             participants = wave_stats.loc[wave, ('participant_id', 'nunique')]
-            records = wave_stats.loc[wave, ('name', 'count')]
+            records = wave_stats.loc[wave, ('participant_id', 'count')]
             avg_diff = wave_stats.loc[wave, ('date_diff', 'mean')]
             max_diff = wave_stats.loc[wave, ('date_diff', 'max')]
             print(f"  Wave {wave}: {records} records, {participants} participants, avg date diff: {avg_diff} days, max: {max_diff} days")
@@ -346,11 +341,11 @@ class UFOVDataIntegrator:
         # 2. UFOVデータの前処理
         self.preprocess_ufov_data()
         
-        # 3. 氏名マッピングの作成
-        self.create_name_mapping()
+        # 3. participant_idの妥当性チェック
+        self.validate_participant_ids()
         
         # 4. データマッチング
-        self.match_data_by_date_and_name()
+        self.match_data_by_participant_id_and_date()
         
         # 5. masterデータの更新
         self.update_master_data()

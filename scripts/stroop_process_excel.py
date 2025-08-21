@@ -13,7 +13,7 @@ class StroopDataIntegrator:
         """
         self.data_dir = data_dir
         self.master_file = os.path.join(data_dir, "data_master.xlsx")
-        self.stroop_file = os.path.join(data_dir, "tiger_2024yobijikken_stroopwithcontrolkeyboard(ja)_summary_2507120648.xlsx")
+        self.stroop_file = os.path.join(data_dir, "tiger_2024pawapuro_stroopwithcontrolkeyboard(ja)_summary_2508211607.xlsx")
         
     def load_data(self):
         """
@@ -24,7 +24,6 @@ class StroopDataIntegrator:
             print("Loading data_master.xlsx...")
             self.master_data = pd.read_excel(self.master_file, sheet_name="master")
             self.student_list = pd.read_excel(self.master_file, sheet_name="student_list")
-            self.school_list = pd.read_excel(self.master_file, sheet_name="school_list")
             
             # Stroopタスクデータを読み込み
             print("Loading Stroop task data...")
@@ -91,29 +90,33 @@ class StroopDataIntegrator:
             print(f"\nParticipants with multiple test sessions: {len(multiple_sessions)}")
             print(f"Max sessions per participant: {multiple_sessions.max()}")
     
-    def create_name_mapping(self):
+    def validate_participant_ids(self):
         """
-        氏名からparticipant_idへのマッピングを作成
+        participant_idの妥当性をチェック
         """
-        print("Creating name to participant_id mapping...")
+        print("Validating participant IDs...")
         
-        # student_listから氏名とparticipant_idのマッピングを作成
-        self.name_to_pid = dict(zip(self.student_list['氏名'], self.student_list['participant_id']))
+        # student_listから有効なparticipant_idのセットを作成
+        valid_participant_ids = set(self.student_list['participant_id'].unique())
         
-        print(f"Created mapping for {len(self.name_to_pid)} students")
+        print(f"Valid participant IDs: {len(valid_participant_ids)}")
         
-        # stroop_dataの氏名がstudent_listに存在するかチェック
-        stroop_names = set(self.stroop_processed['subjectId'].unique())
-        master_names = set(self.student_list['氏名'].unique())
+        # stroop_dataのparticipant_idがstudent_listに存在するかチェック
+        stroop_pids = set(self.stroop_processed['subjectId'].unique())
         
-        matched_names = stroop_names & master_names
-        unmatched_names = stroop_names - master_names
+        matched_pids = stroop_pids & valid_participant_ids
+        unmatched_pids = stroop_pids - valid_participant_ids
         
-        print(f"Matched names: {len(matched_names)}")
-        print(f"Unmatched names: {len(unmatched_names)}")
+        print(f"Matched participant IDs: {len(matched_pids)}")
+        print(f"Unmatched participant IDs: {len(unmatched_pids)}")
         
-        if unmatched_names:
-            print(f"Unmatched names: {list(unmatched_names)}")
+        if unmatched_pids:
+            print(f"Unmatched participant IDs: {list(unmatched_pids)}")
+        
+        # name_to_pidマッピングを作成（subjectIdが数値型の場合）
+        self.name_to_pid = {}
+        for _, row in self.student_list.iterrows():
+            self.name_to_pid[row['participant_id']] = row['participant_id']
     
     def match_data_by_date_and_name(self):
         """
@@ -161,8 +164,8 @@ class StroopDataIntegrator:
             for _, master_row in master_subset.iterrows():
                 date_diff = abs((master_row['measurement_date'] - test_date).days)
                 
-                # 60日以内かつ、現在の最適マッチより近い場合
-                if date_diff <= 60 and date_diff < min_date_diff:
+                # 15日以内かつ、現在の最適マッチより近い場合
+                if date_diff <= 15 and date_diff < min_date_diff:
                     min_date_diff = date_diff
                     best_match = master_row
             
@@ -264,14 +267,12 @@ class StroopDataIntegrator:
         with pd.ExcelWriter(backup_file, engine='openpyxl') as writer:
             self.master_data.to_excel(writer, sheet_name='master', index=False)
             self.student_list.to_excel(writer, sheet_name='student_list', index=False)
-            self.school_list.to_excel(writer, sheet_name='school_list', index=False)
         
         # 更新されたデータを保存
         print(f"Saving updated data to {self.master_file}")
         with pd.ExcelWriter(self.master_file, engine='openpyxl') as writer:
             self.updated_master.to_excel(writer, sheet_name='master', index=False)
             self.student_list.to_excel(writer, sheet_name='student_list', index=False)
-            self.school_list.to_excel(writer, sheet_name='school_list', index=False)
         
         print("Stroop data integration completed successfully!")
     
@@ -321,6 +322,7 @@ class StroopDataIntegrator:
         print(f"Close matches (1-3 days): {((self.matches_df['date_diff'] >= 1) & (self.matches_df['date_diff'] <= 3)).sum()}")
         print(f"Medium matches (4-7 days): {((self.matches_df['date_diff'] >= 4) & (self.matches_df['date_diff'] <= 7)).sum()}")
         print(f"Loose matches (8-15 days): {((self.matches_df['date_diff'] >= 8) & (self.matches_df['date_diff'] <= 15)).sum()}")
+        print(f"Total matches within 15 days: {(self.matches_df['date_diff'] <= 15).sum()}")
         
         # コホート別統計
         if 'cohort' in self.matches_df.columns:
@@ -343,8 +345,8 @@ class StroopDataIntegrator:
         # 2. Stroopデータの前処理
         self.preprocess_stroop_data()
         
-        # 3. 氏名マッピングの作成
-        self.create_name_mapping()
+        # 3. participant_idの妥当性チェック
+        self.validate_participant_ids()
         
         # 4. データマッチング
         self.match_data_by_date_and_name()

@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime
 
 # エクセルファイルを読み込む
-input_file = 'data/noncognitive_2025_05_shinagaku.xlsx'
+input_file = 'data/noncognitive_2025_pawapuro.xlsx'
 master_file = 'data/data_master.xlsx'
 df = pd.read_excel(input_file)
 
@@ -22,7 +22,7 @@ for column in df.columns:
 
 # 出力する列のリスト
 output_columns = [
-    '氏名', '性別', '学年', '所属',
+    '氏名', '性別',
     'これまでどのようなゲームをプレイしていますか（複数選択可）',
     'ゲームをプレイする主なプラットフォームは何ですか（複数選択可）',
     '1日にどれくらいの時間ゲームをプレイしていますか',
@@ -178,8 +178,6 @@ if all_columns:
     # 列名の対応関係を定義
     column_mapping = {
         '性別': 'gender',
-        '学年': 'grade_at_measurement',
-        '所属': 'course',
         'これまでどのようなゲームをプレイしていますか（複数選択可）': 'game_genre',
         'ゲームをプレイする主なプラットフォームは何ですか（複数選択可）': 'game_platform',
         '1日にどれくらいの時間ゲームをプレイしていますか': 'playtime_per_day',
@@ -225,19 +223,7 @@ if all_columns:
             combined_df = renamed_df
 
         # cohortとschool_idを設定
-        # 学年に基づいてcohortを設定
-        def determine_cohort(grade):
-            if pd.isna(grade):
-                return '2024_G1'  # デフォルト値
-            grade_str = str(grade).strip()
-            if '1年生' in grade_str or '1' in grade_str:
-                return '2025_G1'
-            elif '2年生' in grade_str or '2' in grade_str:
-                return '2024_G1'
-            else:
-                return '2024_G1'  # デフォルト値
-        
-        combined_df['cohort'] = combined_df['grade_at_measurement'].apply(determine_cohort)
+        # 学年に基づくcohort設定を削除
         combined_df['school_id'] = 1
 
         # participant_idで昇順ソート（undefinedは最後に）
